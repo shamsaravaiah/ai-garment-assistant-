@@ -1,0 +1,1 @@
+"""Catalog shopping agent service."""

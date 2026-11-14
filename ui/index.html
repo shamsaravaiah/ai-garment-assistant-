@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Catalog Shopping Agent</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --ink: #1a1a1a;
+      --muted: #5c5c5c;
+      --accent: #0f5c4c;
+      --accent-soft: #d8ebe4;
+      --card: #ffffff;
+      --line: #ddd4c4;
+      --user: #e8f0ee;
+      --bot: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 10% 0%, #e7f2ee 0%, transparent 40%),
+        radial-gradient(circle at 90% 10%, #f7e8d4 0%, transparent 35%),
+        var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255,255,255,0.7);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.1rem;
+      letter-spacing: 0.02em;
+    }
+    header p {
+      margin: 0.15rem 0 0;
+      color: var(--muted);
+      font-size: 0.85rem;
+    }
+    button {
+      border: 1px solid var(--accent);
+      background: var(--accent);
+      color: white;
+      border-radius: 8px;
+      padding: 0.55rem 0.9rem;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.secondary {
+      background: transparent;
+      color: var(--accent);
+    }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    main {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 1rem 1rem 6rem;
+    }
+    #log {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+    .bubble {
+      max-width: 92%;
+      padding: 0.85rem 1rem;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: var(--user);
+    }
+    .bubble.assistant {
+      align-self: flex-start;
+      background: var(--bot);
+    }
+    .meta {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin-top: 0.75rem;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      flex-direction: column;
+    }
+    .card img, .card .img-fallback {
+      width: 100%;
+      aspect-ratio: 3/4;
+      object-fit: cover;
+      background: var(--accent-soft);
+      display: block;
+    }
+    .card .img-fallback {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      font-size: 0.75rem;
+      text-align: center;
+      padding: 0.5rem;
+    }
+    .card .body {
+      padding: 0.6rem 0.7rem 0.8rem;
+      font-size: 0.85rem;
+    }
+    .card .price {
+      font-weight: 600;
+      color: var(--accent);
+      margin-top: 0.25rem;
+    }
+    .composer {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 0.85rem 1rem 1.1rem;
+      background: rgba(243,239,230,0.92);
+      border-top: 1px solid var(--line);
+      backdrop-filter: blur(8px);
+    }
+    .composer-inner {
+      max-width: 880px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.6rem;
+    }
+    textarea {
+      width: 100%;
+      min-height: 52px;
+      max-height: 140px;
+      resize: vertical;
+      border-radius: 10px;
+      border: 1px solid var(--line);
+      padding: 0.7rem 0.8rem;
+      font: inherit;
+      background: white;
+    }
+    .error {
+      color: #8a1f1f;
+      background: #fde8e8;
+      border: 1px solid #f0c0c0;
+      padding: 0.7rem 0.85rem;
+      border-radius: 10px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Catalog Shopping Agent</h1>
+      <p id="sessionLabel">New session</p>
+    </div>
+    <button class="secondary" id="newChat" type="button">New chat</button>
+  </header>
+  <main>
+    <div id="log"></div>
+  </main>
+  <div class="composer">
+    <form class="composer-inner" id="form">
+      <textarea id="message" placeholder="e.g. Date night, something simple under 500 SEK" required></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+  </div>
+  <script>
+    const log = document.getElementById("log");
+    const form = document.getElementById("form");
+    const messageEl = document.getElementById("message");
+    const sendBtn = document.getElementById("send");
+    const sessionLabel = document.getElementById("sessionLabel");
+    const newChatBtn = document.getElementById("newChat");
+
+    let sessionId = localStorage.getItem("catalog_agent_session_id") || null;
+
+    function setSession(id) {
+      sessionId = id;
+      if (id) localStorage.setItem("catalog_agent_session_id", id);
+      else localStorage.removeItem("catalog_agent_session_id");
+      sessionLabel.textContent = id ? `Session ${id.slice(0, 8)}…` : "New session";
+    }
+
+    function money(price, currency) {
+      if (price == null) return "";
+      const cur = currency || "";
+      return `${price} ${cur}`.trim();
+    }
+
+    function appendBubble(role, content, products) {
+      const wrap = document.createElement("div");
+      wrap.className = `bubble ${role}`;
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = role === "user" ? "You" : "Assistant";
+      wrap.appendChild(meta);
+      const text = document.createElement("div");
+      text.textContent = content;
+      wrap.appendChild(text);
+      if (products && products.length) {
+        const grid = document.createElement("div");
+        grid.className = "cards";
+        for (const p of products) {
+          const a = document.createElement(p.url ? "a" : "div");
+          a.className = "card";
+          if (p.url) {
+            a.href = p.url;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+          }
+          if (p.image) {
+            const img = document.createElement("img");
+            img.src = p.image;
+            img.alt = p.name || "Product";
+            img.loading = "lazy";
+            img.referrerPolicy = "no-referrer";
+            img.onerror = () => {
+              const fallback = document.createElement("div");
+              fallback.className = "img-fallback";
+              fallback.textContent = "No image";
+              img.replaceWith(fallback);
+            };
+            a.appendChild(img);
+          } else {
+            const fallback = document.createElement("div");
+            fallback.className = "img-fallback";
+            fallback.textContent = "No image";
+            a.appendChild(fallback);
+          }
+          const body = document.createElement("div");
+          body.className = "body";
+          body.innerHTML = `<div>${p.name || p.product_id}</div><div class="price">${money(p.price, p.currency)}</div>`;
+          a.appendChild(body);
+          grid.appendChild(a);
+        }
+        wrap.appendChild(grid);
+      }
+      log.appendChild(wrap);
+      wrap.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    function appendError(msg) {
+      const el = document.createElement("div");
+      el.className = "error";
+      el.textContent = msg;
+      log.appendChild(el);
+    }
+
+    async function loadHistory() {
+      if (!sessionId) return;
+      try {
+        const res = await fetch(`/v1/sessions/${sessionId}`);
+        if (!res.ok) {
+          setSession(null);
+          return;
+        }
+        const data = await res.json();
+        log.innerHTML = "";
+        for (const m of data.messages || []) {
+          appendBubble(m.role, m.content, m.products);
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
+    newChatBtn.addEventListener("click", async () => {
+      if (sessionId) {
+        try { await fetch(`/v1/sessions/${sessionId}`, { method: "DELETE" }); } catch (_) {}
+      }
+      setSession(null);
+      log.innerHTML = "";
+    });
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const message = messageEl.value.trim();
+      if (!message) return;
+      appendBubble("user", message);
+      messageEl.value = "";
+      sendBtn.disabled = true;
+      try {
+        const res = await fetch("/v1/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message, session_id: sessionId, top_k: 5 }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          appendError(data.detail || `Request failed (${res.status})`);
+          return;
+        }
+        setSession(data.session_id);
+        appendBubble("assistant", data.reply, data.products || []);
+      } catch (err) {
+        appendError(String(err));
+      } finally {
+        sendBtn.disabled = false;
+        messageEl.focus();
+      }
+    });
+
+    setSession(sessionId);
+    loadHistory();
+  </script>
+</body>
+</html>
